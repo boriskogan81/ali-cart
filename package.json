@@ -1,0 +1,35 @@
+{
+  "name": "ali-cart",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reads a Google Sheet of AliExpress parts, finds the cheapest matching listing shipped to you, and fills your cart.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "cli": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.21.0",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "@hono/node-server": "^2.1.1",
+    "dotenv": "^17.4.2",
+    "hono": "^4.13.7",
+    "node-notifier": "^10.0.1",
+    "playwright": "^1.63.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "@types/node-notifier": "^8.0.5",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

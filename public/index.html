@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ali-cart</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1a1d23; --muted:#6b7280; --line:#e5e7eb; --ok:#15803d; --warn:#b45309; --bad:#b91c1c; --run:#1d4ed8; --accent:#111827; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, Segoe UI, Roboto, sans-serif; padding:24px 16px; }
+  main { max-width:1200px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  form { display:grid; grid-template-columns:1fr; gap:12px; }
+  @media (min-width:800px) { form { grid-template-columns:2fr 1fr; } form .full { grid-column:1 / -1; } }
+  label { display:flex; flex-direction:column; gap:4px; font-weight:600; }
+  input[type=text] { padding:8px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+  .checks { display:flex; flex-wrap:wrap; gap:14px; font-weight:400; align-items:center; }
+  .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button { padding:9px 16px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .banner { padding:12px 14px; border-radius:8px; margin-bottom:12px; display:none; }
+  .banner.show { display:block; }
+  .banner.login, .banner.captcha { background:#fef3c7; border:1px solid #f59e0b; }
+  .banner.done { background:#dcfce7; border:1px solid #22c55e; }
+  .banner.failed { background:#fee2e2; border:1px solid #ef4444; }
+  .banner.running, .banner.starting { background:#dbeafe; border:1px solid #3b82f6; }
+  .wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:900px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  td.num { text-align:right; white-space:nowrap; }
+  .status { font-weight:600; white-space:nowrap; }
+  .status.ok { color:var(--ok); } .status.running { color:var(--run); } .status.skipped { color:var(--muted); }
+  .status.no-match, .status.error { color:var(--bad); } .status.pending { color:var(--muted); }
+  .msg { color:var(--muted); font-size:12px; }
+  .total { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-weight:600; }
+  details summary { cursor:pointer; color:var(--muted); font-size:12px; }
+  .alt { font-size:12px; margin:4px 0 0 12px; }
+  .alt .rej { color:var(--bad); }
+  a { color:var(--run); }
+  .log { font:12px/1.4 ui-monospace, Consolas, monospace; max-height:180px; overflow:auto; white-space:pre-wrap; color:var(--muted); }
+  .warnkey { color:var(--warn); font-size:12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ali-cart</h1>
+  <p class="sub">Reads a Google Sheet of AliExpress parts, finds the cheapest matching listing shipped to you, fills your cart, and pings you to check out.</p>
+
+  <div class="card">
+    <form id="form">
+      <label>Google Sheet link
+        <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../edit" required />
+      </label>
+      <label>Tab name
+        <input type="text" id="tab" placeholder='e.g. 5"' />
+      </label>
+      <div class="full checks">
+        <strong>Priorities:</strong>
+        <label class="checks"><input type="checkbox" name="prio" value="Essential" checked /> Essential</label>
+        <label class="checks"><input type="checkbox" name="prio" value="Recommended" checked /> Recommended</label>
+        <label class="checks"><input type="checkbox" name="prio" value="Optional" checked /> Optional</label>
+        <label class="checks" style="margin-left:auto"><input type="checkbox" id="dryRun" /> Dry run (price everything, add nothing)</label>
+      </div>
+      <div class="full actions">
+        <button type="button" class="secondary" id="preview">Preview sheet</button>
+        <button type="submit" id="start">Run</button>
+        <span id="cfg" class="msg"></span>
+      </div>
+    </form>
+  </div>
+
+  <div id="banner" class="banner"></div>
+
+  <div class="card" id="results" style="display:none">
+    <div class="wrap">
+      <table>
+        <thead><tr><th>#</th><th>Status</th><th>Product</th><th>Qty</th><th>Chosen listing</th><th class="num">Unit</th><th class="num">Ship</th><th class="num">Landed</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="total"><span id="counts"></span><span id="total"></span></div>
+  </div>
+
+  <div class="card">
+    <details open><summary>Log</summary><div class="log" id="log"></div></details>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { rows: [], currency: "USD" };
+let es = null;
+
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  state.currency = c.currency;
+  $("#cfg").textContent = `ship to ${c.shipTo}, ${c.currency}, sellers under ${c.minStorePositiveRate}% feedback or ${c.minStoreOrders} sold are skipped`;
+  if (!c.hasApiKey) $("#cfg").insertAdjacentHTML("beforeend", ' <span class="warnkey">· ANTHROPIC_API_KEY is not set; matching will fail unless ALI_CART_MATCHER=keyword</span>');
+});
+
+try {
+  const saved = JSON.parse(localStorage.getItem("ali-cart-form") || "{}");
+  if (saved.sheetUrl) $("#sheetUrl").value = saved.sheetUrl;
+  if (saved.tab) $("#tab").value = saved.tab;
+} catch {}
+
+function formValues() {
+  const v = {
+    sheetUrl: $("#sheetUrl").value.trim(),
+    tab: $("#tab").value.trim(),
+    priorities: [...document.querySelectorAll('input[name=prio]:checked')].map((i) => i.value),
+    dryRun: $("#dryRun").checked,
+  };
+  try { localStorage.setItem("ali-cart-form", JSON.stringify(v)); } catch {}
+  return v;
+}
+
+function log(msg) {
+  const el = $("#log");
+  el.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function banner(phase, message) {
+  const b = $("#banner");
+  b.className = `banner show ${phase}`;
+  b.textContent = message;
+}
+
+function money(n) { return n == null ? "" : `${state.currency} ${n.toFixed(2)}`; }
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function renderRows() {
+  $("#results").style.display = "";
+  const tb = $("#rows");
+  tb.innerHTML = state.rows.map((r) => {
+    const c = r.chosen;
+    const alts = r.priced.filter((p) => !c || p.productId !== c.productId);
+    const altHtml = alts.length ? `<details><summary>${alts.length} other listing${alts.length > 1 ? "s" : ""} priced</summary>${alts.map((p) =>
+      `<div class="alt"><a href="${esc(p.url)}" target="_blank">${esc(p.productId)}</a> ${money(p.landedTotal)} ${p.variant ? `· ${esc(p.variant)}` : ""} ${p.rejected ? `<span class="rej">rejected: ${esc(p.rejected)}</span>` : ""}</div>`).join("")}</details>` : "";
+    return `<tr>
+      <td>${r.row.rowNumber}</td>
+      <td><span class="status ${r.status}">${r.status}</span></td>
+      <td><div>${esc(r.row.product)}</div><div class="msg">${esc(r.row.part)}${r.row.priority ? ` · ${esc(r.row.priority)}` : ""}</div><div class="msg">${esc(r.message)}</div></td>
+      <td>${r.row.qty}</td>
+      <td>${c ? `<a href="${esc(c.url)}" target="_blank">${esc(c.title.slice(0, 70))}</a><div class="msg">${esc(c.storeName ?? "")}${c.variant ? ` · ${esc(c.variant)}` : ""}${c.storePositiveRate != null ? ` · ${c.storePositiveRate}% feedback` : ""}</div>` : ""}${altHtml}</td>
+      <td class="num">${c ? money(c.unitPrice) : ""}</td>
+      <td class="num">${c ? (c.shipping === 0 ? "free" : money(c.shipping)) : ""}</td>
+      <td class="num">${c ? money(c.landedTotal) : ""}</td>
+    </tr>`;
+  }).join("");
+  const n = (s) => state.rows.filter((r) => r.status === s).length;
+  $("#counts").textContent = `${n("ok")} ok · ${n("no-match") + n("error")} need attention · ${n("skipped")} skipped · ${n("pending") + n("running")} to go`;
+  const total = state.rows.reduce((s, r) => s + (r.chosen ? r.chosen.landedTotal : 0), 0);
+  $("#total").textContent = `Landed total: ${money(total)}`;
+}
+
+$("#preview").addEventListener("click", async () => {
+  const v = formValues();
+  log(`Previewing sheet tab "${v.tab}"`);
+  const r = await fetch(`/api/sheet?url=${encodeURIComponent(v.sheetUrl)}&tab=${encodeURIComponent(v.tab)}`);
+  const j = await r.json();
+  if (j.error) { banner("failed", j.error); return; }
+  state.rows = j.rows.map((row) => ({ row, status: v.priorities.includes(row.priority) || !row.priority ? "pending" : "skipped", message: "", priced: [], chosen: null }));
+  banner("starting", `${j.rows.length} rows found. ${state.rows.filter((r) => r.status === "pending").length} will be processed with the selected priorities.`);
+  renderRows();
+});
+
+$("#form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = formValues();
+  $("#start").disabled = true;
+  const r = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(v) });
+  const j = await r.json();
+  if (j.error) { banner("failed", j.error); $("#start").disabled = false; return; }
+  log(`Run ${j.id} started`);
+  follow(j.id);
+});
+
+function follow(id) {
+  if (es) es.close();
+  es = new EventSource(`/api/runs/${id}/events`);
+  es.addEventListener("state", (e) => { const s = JSON.parse(e.data); state.rows = s.rows; renderRows(); if (s.phase) banner(s.phase, s.error || `Phase: ${s.phase}`); });
+  es.addEventListener("row", (e) => { const ev = JSON.parse(e.data); state.rows[ev.index] = ev.result; renderRows(); });
+  es.addEventListener("phase", (e) => { const ev = JSON.parse(e.data); banner(ev.phase, ev.message); });
+  es.addEventListener("log", (e) => log(JSON.parse(e.data).message));
+  es.addEventListener("done", (e) => {
+    const s = JSON.parse(e.data).state;
+    state.rows = s.rows; renderRows();
+    banner(s.phase, s.error ? `Run failed: ${s.error}` : (s.options.dryRun ? "Dry run finished. Nothing was added to the cart." : "Cart is ready. Review it in the browser window and check out."));
+    $("#start").disabled = false;
+    es.close();
+  });
+  es.onerror = () => { log("connection to server lost"); $("#start").disabled = false; };
+}
+
+// Resume watching an in-progress run after a page reload.
+fetch("/api/runs").then((r) => r.json()).then((j) => {
+  const live = (j.runs || []).find((r) => !r.finishedAt);
+  if (live) { log(`Attaching to running job ${live.id}`); $("#start").disabled = true; follow(live.id); }
+});
+</script>
+</body>
+</html>
