@@ -76,7 +76,7 @@ export async function snapshotItemPage(page: Page): Promise<PageSnapshot> {
     price: parseMoney(raw.price),
     shipping: ship.shipping,
     shippingNote: ship.note,
-    storeName: raw.storeName,
+    storeName: raw.storeName?.split("\n")[0].trim() ?? null,
     storePositiveRate: parsePositiveRate(raw.storeInfo),
     soldCount: parseSold(raw.soldLine),
     skuGroups: raw.groups.map((g) => ({ title: g.title.replace(/:.*$/, "").trim(), options: g.options })),

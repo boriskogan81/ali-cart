@@ -22,6 +22,9 @@ export async function launchBrowser(): Promise<BrowserContext> {
         locale: "en-US",
         ignoreDefaultArgs: ["--enable-automation"],
       });
+      // tsx/esbuild wraps inner functions of page.evaluate callbacks in a `__name` helper that does not exist
+      // inside the page; define a no-op so those callbacks run.
+      await ctx.addInitScript("window.__name = window.__name || function (fn) { return fn; };");
       await ctx.addCookies([
         { name: "aep_usuc_f", value: `site=glo&c_tp=${config.currency}&region=${config.shipTo}&b_locale=en_US`, domain: ".aliexpress.com", path: "/" },
         { name: "intl_locale", value: "en_US", domain: ".aliexpress.com", path: "/" },
