@@ -41,3 +41,13 @@ describe("pipeline helpers", () => {
     expect(shortenTitle("EMAX ECO II Series 2207/2306 FPV Brushless Motor 1700KV 1900KV, for RC Drone")).toBe("EMAX ECO II Series 2207/2306 FPV Brushless Motor");
   });
 });
+
+describe("store-level stats", () => {
+  it("reads store sales and followers", async () => {
+    const { parseFollowers, parseStoreSold } = await import("../src/pricing.js");
+    expect(parseStoreSold("by Small Digital World ... (4.8 | 2,000+ sold )")).toBe(2000);
+    expect(parseStoreSold("1 sold")).toBeNull();
+    expect(parseFollowers("SkyNova Drone Parts Store\n0.0% Positive Feedback | 8 Followers")).toBe(8);
+    expect(parseFollowers("93.6% Positive Feedback | 2,308 Followers")).toBe(2308);
+  });
+});

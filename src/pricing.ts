@@ -9,6 +9,8 @@ export interface PageSnapshot {
   storeName: string | null;
   storePositiveRate: number | null;
   soldCount: number | null;
+  storeSold: number | null;
+  storeFollowers: number | null;
   skuGroups: { title: string; options: { label: string; selected: boolean; selector: string }[] }[];
   skuId: string | null;
   unavailable: string | null;
@@ -33,6 +35,19 @@ export function parseShipping(text: string): { shipping: number | null; note: st
 export function parsePositiveRate(text: string | null): number | null {
   const m = text?.match(/(\d+(?:\.\d+)?)\s*%\s*positive/i);
   return m ? Number(m[1]) : null;
+}
+
+/** Store-level sales shown next to the store name as "(4.8 | 2,000+ sold)". */
+export function parseStoreSold(text: string | null): number | null {
+  const m = text?.replace(/,/g, "").match(/\(\s*[\d.]+\s*\|\s*(\d+(?:\.\d+)?)\s*(k)?\+?\s*sold\s*\)/i);
+  if (!m) return null;
+  return Math.round(Number(m[1]) * (m[2] ? 1000 : 1));
+}
+
+export function parseFollowers(text: string | null): number | null {
+  const m = text?.replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*(k)?\+?\s*Followers/i);
+  if (!m) return null;
+  return Math.round(Number(m[1]) * (m[2] ? 1000 : 1));
 }
 
 export function parseSold(text: string | null): number | null {
@@ -66,6 +81,7 @@ export async function snapshotItemPage(page: Page): Promise<PageSnapshot> {
       storeName: txt('[class*="store-detail--storeName"]') ?? txt('[class*="store-info--name"]'),
       storeInfo: txt('[class*="store-info--desc"]') ?? txt('[class*="store-info--wrap"]'),
       soldLine: bodyHead.match(/[^\n]*\bsold\b[^\n]*/i)?.[0] ?? null,
+      storeLine: bodyHead.match(/\(\s*[\d.]+\s*\|[^)]*sold[^)]*\)/i)?.[0] ?? null,
       groups,
       unavailable: bodyHead.match(/(This product is no longer available|Sorry, this item is no longer available|can't be shipped to|cannot be shipped to)[^\n]*/i)?.[0] ?? null,
       skuId: new URL(location.href).searchParams.get("sku_id"),
@@ -79,6 +95,8 @@ export async function snapshotItemPage(page: Page): Promise<PageSnapshot> {
     storeName: raw.storeName?.split("\n")[0].trim() ?? null,
     storePositiveRate: parsePositiveRate(raw.storeInfo),
     soldCount: parseSold(raw.soldLine),
+    storeSold: parseStoreSold(raw.storeLine),
+    storeFollowers: parseFollowers(raw.storeInfo),
     skuGroups: raw.groups.map((g) => ({ title: g.title.replace(/:.*$/, "").trim(), options: g.options })),
     skuId: raw.skuId,
     unavailable: raw.unavailable,
@@ -124,14 +142,25 @@ export async function selectVariant(page: Page, hint: string | null): Promise<st
   return picked.join(" / ");
 }
 
-export function guardrailReason(snap: PageSnapshot, candidate: Candidate): string | null {
+export function guardrailReason(snap: PageSnapshot, candidate: Candidate, estPrice: number | null, qty: number): string | null {
   if (snap.unavailable) return snap.unavailable;
   if (snap.price === null) return "no price found on page";
   if (snap.shipping === null) return `no shipping to ${config.shipTo}: ${snap.shippingNote}`;
   if (snap.storePositiveRate !== null && snap.storePositiveRate < config.minStorePositiveRate)
     return `store feedback ${snap.storePositiveRate}% < ${config.minStorePositiveRate}%`;
-  const sold = snap.soldCount ?? candidate.sold;
-  if (sold !== null && sold < config.minStoreOrders) return `only ${sold} sold < ${config.minStoreOrders}`;
+  // Store track record: store-level sales first, then followers as a proxy, then the listing's own sales.
+  const orders = snap.storeSold ?? snap.soldCount ?? candidate.sold;
+  const established =
+    (orders !== null && orders >= config.minStoreOrders) || (snap.storeFollowers !== null && snap.storeFollowers >= config.minStoreOrders * 10);
+  if (!established) {
+    if (orders === null && snap.storeFollowers === null) return "store has no visible sales or followers";
+    return `store has ${orders ?? 0} sales / ${snap.storeFollowers ?? 0} followers (< ${config.minStoreOrders} sales)`;
+  }
+  if (estPrice && estPrice > 0) {
+    const landed = snap.price * qty + snap.shipping;
+    const cap = Math.max(estPrice * config.maxPriceMultiple, estPrice + 40);
+    if (landed > cap) return `landed ${landed.toFixed(2)} is over ${config.maxPriceMultiple}x the sheet estimate (${estPrice})`;
+  }
   return null;
 }
 
@@ -141,6 +170,7 @@ export async function priceListing(
   candidate: Candidate,
   decision: MatchDecision,
   qty: number,
+  estPrice: number | null,
   goto: (url: string) => Promise<void>,
 ): Promise<Priced> {
   await goto(candidate.url);
@@ -148,7 +178,7 @@ export async function priceListing(
   await page.waitForTimeout(1500);
   const variant = await selectVariant(page, decision.variant);
   const snap = await snapshotItemPage(page);
-  const rejected = guardrailReason(snap, candidate);
+  const rejected = guardrailReason(snap, candidate, estPrice, qty);
   const unit = snap.price ?? candidate.price;
   const ship = snap.shipping ?? 0;
   return {
@@ -165,7 +195,8 @@ export async function priceListing(
     landedTotal: Math.round((unit * qty + ship) * 100) / 100,
     storeName: snap.storeName,
     storePositiveRate: snap.storePositiveRate,
-    storeOrders: snap.soldCount ?? candidate.sold,
+    storeOrders: snap.storeSold ?? snap.soldCount ?? candidate.sold,
+    storeFollowers: snap.storeFollowers,
     rejected,
   };
 }

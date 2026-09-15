@@ -38,8 +38,9 @@ The first real run opens a **plain** Chrome window on the app's own profile and 
 | `SHIP_TO` | `IL` | Country whose shipping cost is read |
 | `CURRENCY` | `USD` | Display currency for prices |
 | `MIN_STORE_POSITIVE_RATE` | `90` | Listings from stores below this feedback % are rejected |
-| `MIN_STORE_ORDERS` | `20` | Listings with fewer sales are rejected |
+| `MIN_STORE_ORDERS` | `20` | Stores with fewer sales are rejected (ten times this many followers also counts as established) |
 | `MAX_PRICED_PER_ROW` | `8` | How many matched listings to open per row (cheapest first) |
+| `MAX_PRICE_MULTIPLE` | `3` | Reject listings whose landed cost exceeds this multiple of the sheet estimate |
 | `BROWSER_CHANNEL` | | Force `chrome`, `msedge` or `chromium` |
 | `PORT` | `3000` | Local server port |
 

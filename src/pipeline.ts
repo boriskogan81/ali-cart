@@ -194,7 +194,7 @@ export class Run extends EventEmitter {
       for (const [candidate, decision] of toPrice) {
         this.updateRow(i, { message: `pricing ${priced.length + 1}/${toPrice.length}: ${candidate.productId}` });
         try {
-          priced.push(await priceListing(this.page!, candidate, decision, row.qty, this.goto));
+          priced.push(await priceListing(this.page!, candidate, decision, row.qty, row.estPrice, this.goto));
         } catch (err) {
           priced.push({
             productId: candidate.productId,
@@ -210,6 +210,7 @@ export class Run extends EventEmitter {
             storeName: null,
             storePositiveRate: null,
             storeOrders: candidate.sold,
+            storeFollowers: null,
             rejected: `page error: ${(err as Error).message.split("\n")[0]}`,
           });
         }

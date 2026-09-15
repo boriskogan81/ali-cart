@@ -53,6 +53,7 @@ export interface Priced {
   storeName: string | null;
   storePositiveRate: number | null;
   storeOrders: number | null;
+  storeFollowers: number | null;
   rejected: string | null;
 }
 
