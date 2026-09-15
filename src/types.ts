@@ -83,6 +83,8 @@ export interface RunOptions {
   limit?: number;
   /** Only process these sheet row numbers (testing / re-running a few rows). */
   rows?: number[];
+  /** Apply mode: skip search/pricing and add the chosen listings of this earlier run to the cart. */
+  applyFromRunId?: string;
 }
 
 export interface RunState {

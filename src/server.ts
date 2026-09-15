@@ -40,6 +40,15 @@ export function createApp() {
     return c.json({ id: run.state.id });
   });
 
+  app.post("/api/runs/:id/apply", (c) => {
+    if (active && !active.state.finishedAt) return c.json({ error: "A run is already in progress", id: active.state.id }, 409);
+    const run = new Run({ sheetUrl: "", tab: "", priorities: PRIORITIES, dryRun: false, applyFromRunId: c.req.param("id") });
+    runs.set(run.state.id, run);
+    active = run;
+    void run.start();
+    return c.json({ id: run.state.id });
+  });
+
   app.get("/api/runs", (c) => {
     const live = [...runs.values()].map((r) => summary(r.state));
     let saved: ReturnType<typeof summary>[] = [];

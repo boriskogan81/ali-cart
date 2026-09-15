@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { checkLoggedIn, gotoWithChecks, launchBrowser, getPage, manualLogin, pause } from "./browser.js";
@@ -91,6 +92,7 @@ export class Run extends EventEmitter {
   }
 
   private async execute() {
+    if (this.state.options.applyFromRunId) return this.applyExisting(this.state.options.applyFromRunId);
     const { sheetUrl, tab, priorities, dryRun } = this.state.options;
     this.log(`Reading sheet tab "${tab}"`);
     const rows = await fetchSheetRows(sheetUrl, tab || null);
@@ -106,9 +108,10 @@ export class Run extends EventEmitter {
     this.state.rows.forEach((r, i) => this.emitEvent({ type: "row", index: i, result: r }));
 
     this.setPhase("starting", "Launching browser");
-    this.ctx = await launchBrowser();
+    // Dry runs use a throwaway profile: no login needed, and a rate limit on the signed-in session does not affect them.
+    this.ctx = await launchBrowser(dryRun ? mkdtempSync(path.join(tmpdir(), "ali-cart-dry-")) : undefined);
     this.page = await getPage(this.ctx);
-    if (dryRun) this.log("Dry run: not waiting for AliExpress login (search, matching and pricing work signed out).");
+    if (dryRun) this.log("Dry run: using a signed-out browser (search, matching and pricing work signed out).");
     else await this.ensureLoggedIn();
     this.setPhase("running", `${dryRun ? "Browser ready" : "Signed in"}. Processing ${this.state.rows.filter((r) => r.status === "pending").length} rows${dryRun ? " (dry run, nothing is added to the cart)" : ""}.`);
 
@@ -134,6 +137,42 @@ export class Run extends EventEmitter {
       notify("ali-cart: dry run finished", `${ok} matched, ${problems} need attention. Nothing was added to the cart.`);
     }
     this.log(`Finished. ${ok} ok, ${problems} need attention, landed total ${config.currency} ${this.state.totalLanded.toFixed(2)}.`);
+  }
+
+  /** Apply mode: take the chosen listings from an earlier (typically dry) run and add them to the cart, one page each. */
+  private async applyExisting(runId: string) {
+    const file = path.join(config.runsDir, `${runId}.json`);
+    const source = JSON.parse(readFileSync(file, "utf8")) as RunState;
+    this.state.options = { ...source.options, dryRun: false, applyFromRunId: runId };
+    this.state.rows = source.rows.map((r) => ({ ...r, status: r.chosen && !r.cartAdded ? "pending" : r.status, message: r.chosen && !r.cartAdded ? "queued for cart" : r.message }));
+    this.persist();
+    this.state.rows.forEach((r, i) => this.emitEvent({ type: "row", index: i, result: r }));
+    const todo = this.state.rows.filter((r) => r.status === "pending").length;
+    if (todo === 0) throw new Error(`Run ${runId} has no chosen listings left to add.`);
+
+    this.setPhase("starting", `Launching browser to add ${todo} chosen listings from run ${runId}`);
+    this.ctx = await launchBrowser();
+    this.page = await getPage(this.ctx);
+    await this.ensureLoggedIn();
+    this.setPhase("running", `Signed in. Adding ${todo} listings to the cart.`);
+    for (let i = 0; i < this.state.rows.length; i++) {
+      const r = this.state.rows[i];
+      if (r.status !== "pending" || !r.chosen) continue;
+      this.updateRow(i, { status: "running", message: "adding to cart" });
+      try {
+        await addToCart(this.page!, r.chosen, r.row.qty, this.goto);
+        this.updateRow(i, { status: "ok", cartAdded: true, message: `added ${r.row.qty} x ${r.chosen.productId} to cart` });
+      } catch (err) {
+        this.updateRow(i, { status: "error", message: (err as Error).message.split("\n")[0] });
+      }
+      await pause();
+    }
+    this.state.totalLanded = this.state.rows.reduce((sum, r) => sum + (r.cartAdded && r.chosen ? r.chosen.landedTotal : 0), 0);
+    const ok = this.state.rows.filter((r) => r.cartAdded).length;
+    const problems = this.state.rows.filter((r) => r.status === "error").length;
+    await this.goto(CART_URL).catch(() => {});
+    notify("ali-cart: cart is ready", `${ok} items in the cart, ${problems} failed. Review and check out.`);
+    this.log(`Finished. ${ok} in cart, ${problems} failed, landed total ${config.currency} ${this.state.totalLanded.toFixed(2)}.`);
   }
 
   /** Sign-in happens in a plain (non-automated) Chrome on the same profile, because AliExpress's slider blocks automated browsers. */

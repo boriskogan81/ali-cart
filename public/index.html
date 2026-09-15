@@ -82,7 +82,7 @@
         <tbody id="rows"></tbody>
       </table>
     </div>
-    <div class="total"><span id="counts"></span><span id="total"></span></div>
+    <div class="total"><span id="counts"></span><span><button type="button" id="apply" hidden>Add chosen items to cart</button> <span id="total"></span></span></div>
   </div>
 
   <div class="card">
@@ -190,12 +190,24 @@ function follow(id) {
   es.addEventListener("done", (e) => {
     const s = JSON.parse(e.data).state;
     state.rows = s.rows; renderRows();
+    state.lastRunId = s.id;
+    $("#apply").hidden = !(s.options.dryRun && s.rows.some((r) => r.chosen && !r.cartAdded));
     banner(s.phase, s.error ? `Run failed: ${s.error}` : (s.options.dryRun ? "Dry run finished. Nothing was added to the cart." : "Cart is ready. Review it in the browser window and check out."));
     $("#start").disabled = false;
     es.close();
   });
   es.onerror = () => { log("connection to server lost"); $("#start").disabled = false; };
 }
+
+$("#apply").addEventListener("click", async () => {
+  if (!state.lastRunId) return;
+  $("#apply").hidden = true; $("#start").disabled = true;
+  const r = await fetch(`/api/runs/${state.lastRunId}/apply`, { method: "POST" });
+  const j = await r.json();
+  if (j.error) { banner("failed", j.error); $("#start").disabled = false; return; }
+  log(`Apply run ${j.id} started: adding chosen listings to the cart`);
+  follow(j.id);
+});
 
 // Resume watching an in-progress run after a page reload.
 fetch("/api/runs").then((r) => r.json()).then((j) => {

@@ -10,14 +10,14 @@ export type BrowserChannel = "chrome" | "msedge" | "chromium";
  * between runs. System Chrome is preferred (looks like a normal browser to AliExpress), then Edge, then the
  * Playwright-bundled Chromium.
  */
-export async function launchBrowser(): Promise<BrowserContext> {
+export async function launchBrowser(profileDir: string = config.profileDir): Promise<BrowserContext> {
   const order: BrowserChannel[] = (process.env.BROWSER_CHANNEL as BrowserChannel | undefined)
     ? [process.env.BROWSER_CHANNEL as BrowserChannel]
     : ["chrome", "msedge", "chromium"];
   let lastErr: unknown;
   for (const channel of order) {
     try {
-      const ctx = await chromium.launchPersistentContext(config.profileDir, {
+      const ctx = await chromium.launchPersistentContext(profileDir, {
         headless: false,
         channel: channel === "chromium" ? undefined : channel,
         viewport: { width: 1280, height: 900 },
