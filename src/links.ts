@@ -38,29 +38,59 @@ export function classifyUrl(finalUrl: string): ResolvedLink {
   return { kind: "external", finalUrl };
 }
 
-/** Follow affiliate/short links to their destination and classify it. */
+/** Pull a client-side redirect target (meta refresh or `location.href = ...`) out of an HTML body, if any. */
+export function redirectFromHtml(html: string): string | null {
+  const meta = html.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]+content=["'][^"']*url=([^"'>\s]+)/i);
+  if (meta) return meta[1];
+  const js = html.match(/(?:location\.href|location\.replace\(|window\.location)\s*=?\s*["']([^"']+)["']/i);
+  return js ? js[1] : null;
+}
+
+export function isAliExpressLink(link: string): boolean {
+  return /aliexpress\./i.test(link) || /s\.click\./i.test(link);
+}
+
+async function fetchHop(url: string, shipTo: string, currency: string): Promise<{ status: number; location: string | null }> {
+  const res = await fetch(url, {
+    method: "GET",
+    redirect: "manual",
+    headers: { "User-Agent": UA, Cookie: localeCookie(shipTo, currency), Accept: "text/html,*/*" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  let location = res.headers.get("location");
+  if (!location && res.status === 200 && (res.headers.get("content-type") ?? "").includes("html")) {
+    const body = await res.text().catch(() => "");
+    location = redirectFromHtml(body.slice(0, 200_000));
+  } else await res.body?.cancel().catch(() => {});
+  return { status: res.status, location };
+}
+
+/** Follow affiliate/short links to their destination and classify it. Retries transient failures. */
 export async function resolveLink(link: string, shipTo = "IL", currency = "USD"): Promise<ResolvedLink> {
   const trimmed = link.trim();
   if (!trimmed) return { kind: "none" };
-  let current = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
-  // Follow redirects manually so we can stop as soon as we can classify, and never fetch a full item page.
-  for (let hop = 0; hop < 8; hop++) {
-    const direct = classifyUrl(current);
-    if (direct.kind === "item" || direct.kind === "search") return direct;
-    if (direct.kind === "none") return direct;
-    if (!/aliexpress\./i.test(current) && !/s\.click\./i.test(current) && hop === 0) return direct; // plain external link
-    const res = await fetch(current, {
-      method: "HEAD",
-      redirect: "manual",
-      headers: { "User-Agent": UA, Cookie: localeCookie(shipTo, currency) },
-    }).catch(() => null);
-    if (!res) return { kind: "external", finalUrl: current };
-    const loc = res.headers.get("location");
-    if (res.status >= 300 && res.status < 400 && loc) {
-      current = new URL(loc, current).toString();
-      continue;
+  const start = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+  if (!isAliExpressLink(start)) return classifyUrl(start);
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let current = start;
+    try {
+      // Follow redirects by hand so we can stop as soon as the URL is classifiable and never load a full item page.
+      for (let hop = 0; hop < 8; hop++) {
+        const direct = classifyUrl(current);
+        if (direct.kind !== "external") return direct;
+        const { status, location } = await fetchHop(current, shipTo, currency);
+        if (!location) {
+          lastError = `HTTP ${status} without a redirect at ${current}`;
+          break;
+        }
+        current = new URL(location, current).toString();
+      }
+    } catch (err) {
+      lastError = (err as Error).message;
     }
-    return classifyUrl(current);
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
   }
-  return { kind: "external", finalUrl: current };
+  console.warn(`[links] could not resolve ${start}: ${lastError}`);
+  return { kind: "external", finalUrl: start };
 }

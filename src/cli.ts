@@ -11,16 +11,17 @@ const { values } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     "keep-open": { type: "boolean", default: false },
     limit: { type: "string" },
+    rows: { type: "string" },
   },
 });
 
 if (!values.sheet) {
-  console.error(`usage: pnpm cli --sheet <google-sheets-url> [--tab '5"'] [--priorities Essential,Recommended,Optional] [--dry-run] [--keep-open]`);
+  console.error(`usage: pnpm cli --sheet <google-sheets-url> [--tab '5"'] [--priorities Essential,Recommended,Optional] [--dry-run] [--keep-open] [--limit N] [--rows 12,17]`);
   process.exit(2);
 }
 
 const priorities = values.priorities!.split(",").map((s) => s.trim()).filter((p): p is Priority => (PRIORITIES as string[]).includes(p));
-const run = new Run({ sheetUrl: values.sheet, tab: values.tab!, priorities, dryRun: values["dry-run"]!, limit: values.limit ? Number(values.limit) : undefined });
+const run = new Run({ sheetUrl: values.sheet, tab: values.tab!, priorities, dryRun: values["dry-run"]!, limit: values.limit ? Number(values.limit) : undefined, rows: values.rows ? values.rows.split(",").map(Number) : undefined });
 run.on("event", (ev) => {
   if (ev.type === "row") {
     const r = ev.result;

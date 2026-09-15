@@ -49,7 +49,7 @@ The first real run opens a Chrome window and asks you to sign in to AliExpress. 
 pnpm cli --sheet "https://docs.google.com/spreadsheets/d/…/edit" --tab '5"' --dry-run
 ```
 
-Flags: `--priorities Essential,Recommended`, `--limit 3` (first N rows), `--keep-open` (leave the browser up).
+Flags: `--priorities Essential,Recommended`, `--limit 3` (first N rows), `--rows 12,17` (only those sheet rows), `--keep-open` (leave the browser up).
 
 A dry run does everything except add to cart and does not need an AliExpress login. Set `ALI_CART_MATCHER=keyword` to replace Claude with a crude title-keyword matcher when you have no API key; expect worse matches.
 

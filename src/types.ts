@@ -78,6 +78,8 @@ export interface RunOptions {
   dryRun: boolean;
   /** Process at most this many rows (testing aid). */
   limit?: number;
+  /** Only process these sheet row numbers (testing / re-running a few rows). */
+  rows?: number[];
 }
 
 export interface RunState {

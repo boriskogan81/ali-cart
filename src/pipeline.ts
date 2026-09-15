@@ -5,7 +5,7 @@ import type { BrowserContext, Page } from "playwright";
 import { gotoWithChecks, launchBrowser, getPage, pause, waitForLogin } from "./browser.js";
 import { CART_URL, addToCart } from "./cart.js";
 import { config } from "./config.js";
-import { resolveLink } from "./links.js";
+import { isAliExpressLink, resolveLink } from "./links.js";
 import { matchCandidates } from "./match.js";
 import { notify } from "./notify.js";
 import { priceListing } from "./pricing.js";
@@ -93,7 +93,9 @@ export class Run extends EventEmitter {
     if (rows.length === 0) throw new Error("The sheet tab has no rows with a product and a link.");
     this.state.rows = rows.map((row) => blankResult(row));
     rows.forEach((row, i) => {
-      if (row.priority && !priorities.includes(row.priority)) this.state.rows[i] = { ...this.state.rows[i], status: "skipped", message: `priority ${row.priority} not selected` };
+      const only = this.state.options.rows;
+      if (only && only.length && !only.includes(row.rowNumber)) this.state.rows[i] = { ...this.state.rows[i], status: "skipped", message: "not in the selected rows" };
+      else if (row.priority && !priorities.includes(row.priority)) this.state.rows[i] = { ...this.state.rows[i], status: "skipped", message: `priority ${row.priority} not selected` };
       else if (!/aliexpress\./i.test(row.link) && !/s\.click\./i.test(row.link)) this.state.rows[i] = { ...this.state.rows[i], status: "skipped", message: "not an AliExpress link" };
     });
     this.persist();
@@ -139,7 +141,12 @@ export class Run extends EventEmitter {
     const row = result.row;
     this.updateRow(i, { status: "running", message: "resolving link" });
     try {
-      const resolved = await resolveLink(row.link, config.shipTo, config.currency);
+      let resolved = await resolveLink(row.link, config.shipTo, config.currency);
+      if (resolved.kind === "external" && isAliExpressLink(row.link)) {
+        // The short link would not resolve (rate limited or changed); search by the product name instead.
+        this.log(`Row ${row.rowNumber}: could not resolve ${row.link}, searching by product name`);
+        resolved = { kind: "search", query: row.product.replace(/\(.*?\)/g, " ").replace(/\s+/g, " ").trim(), finalUrl: row.link };
+      }
       this.updateRow(i, { resolved });
       if (resolved.kind === "external" || resolved.kind === "none") {
         this.updateRow(i, { status: "skipped", message: "link does not lead to an AliExpress search or item" });

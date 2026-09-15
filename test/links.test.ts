@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyUrl } from "../src/links.js";
+import { classifyUrl, redirectFromHtml } from "../src/links.js";
 
 describe("classifyUrl", () => {
   it("recognises item pages", () => {
@@ -22,5 +22,13 @@ describe("classifyUrl", () => {
   });
   it("flags non-aliexpress links as external", () => {
     expect(classifyUrl("https://betaflight.com")).toMatchObject({ kind: "external" });
+  });
+});
+
+describe("redirectFromHtml", () => {
+  it("finds meta refresh and script redirects", () => {
+    expect(redirectFromHtml('<meta http-equiv="refresh" content="0;url=https://www.aliexpress.com/item/1.html">')).toBe("https://www.aliexpress.com/item/1.html");
+    expect(redirectFromHtml('<script>window.location.href = "https://www.aliexpress.com/w/wholesale-x.html";</script>')).toBe("https://www.aliexpress.com/w/wholesale-x.html");
+    expect(redirectFromHtml("<html><body>nothing</body></html>")).toBeNull();
   });
 });
