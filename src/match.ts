@@ -26,6 +26,7 @@ Rules:
 - Many listings sell several variants in one page (e.g. "1700KV 1900KV 2400KV", "with/without receiver", "1pc/4pcs"). Include those and put the variant the row needs into "variant" as a short label the buyer would pick on the page (e.g. "1900KV", "RHCP SMA", "4pcs", "6S 1300mAh").
 - If a listing's title makes the price look like it is for a single piece when the row wants a set (or vice versa), still include it but say so in "reason".
 - Exclude accessories, spare parts, cases, cables, or stickers for the product unless the row asks for those.
+- If the row asks for a combination (e.g. "FC + ESC stack", "camera + VTX bundle", "2-pack"), only listings that include the WHOLE combination match. A listing that sells one part of it is NOT a match, even at "medium" confidence; leave it out and suggest a betterQuery for the full combination or, failing that, for the most expensive missing part.
 - confidence "high" = certain it is the product; "medium" = probably, title is ambiguous.
 - If nothing matches, return an empty list and, when a different search phrase would likely find the product, suggest it in "betterQuery" (otherwise null).
 Be strict: a wrong match costs the buyer money; a missed match only costs a manual search.`;
