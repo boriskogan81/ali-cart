@@ -72,8 +72,13 @@ export async function gotoWithChecks(page: Page, url: string, onBlocked: (kind: 
   }
 }
 
+/** Robust check: the account page redirects to the login page when signed out. */
 export async function checkLoggedIn(page: Page): Promise<boolean> {
-  await page.goto("https://www.aliexpress.com/", { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.goto("https://www.aliexpress.com/p/account/index.html", { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (/login|passport|ug-login/i.test(page.url())) return false;
+  if (/\/p\/account/i.test(page.url())) return true;
+  await page.goto("https://www.aliexpress.com/", { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
   await page.waitForTimeout(2500);
   return isLoggedIn(page);
 }
