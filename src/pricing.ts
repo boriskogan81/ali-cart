@@ -172,11 +172,18 @@ export async function priceListing(
   qty: number,
   estPrice: number | null,
   goto: (url: string) => Promise<void>,
+  fallbackHint: string | null = null,
 ): Promise<Priced> {
   await goto(candidate.url);
   await page.waitForSelector('[class*="price-default--current"], [class*="store-detail"]', { timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(1500);
-  const variant = await selectVariant(page, decision.variant);
+  // When the matcher gave no variant hint but the page has option pickers, fall back to the product name itself
+  // (e.g. "CNHL 6S 1100-1300mAh" picks the "6S 1300mAh" option) rather than trusting the page default.
+  let variant = await selectVariant(page, decision.variant);
+  if (!variant && fallbackHint) {
+    const groups = (await snapshotItemPage(page)).skuGroups;
+    if (groups.some((g) => g.options.length > 1)) variant = await selectVariant(page, fallbackHint);
+  }
   const snap = await snapshotItemPage(page);
   const rejected = guardrailReason(snap, candidate, estPrice, qty);
   const unit = snap.price ?? candidate.price;

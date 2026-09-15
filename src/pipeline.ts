@@ -194,7 +194,7 @@ export class Run extends EventEmitter {
       for (const [candidate, decision] of toPrice) {
         this.updateRow(i, { message: `pricing ${priced.length + 1}/${toPrice.length}: ${candidate.productId}` });
         try {
-          priced.push(await priceListing(this.page!, candidate, decision, row.qty, row.estPrice, this.goto));
+          priced.push(await priceListing(this.page!, candidate, decision, row.qty, row.estPrice, this.goto, row.product));
         } catch (err) {
           priced.push({
             productId: candidate.productId,
