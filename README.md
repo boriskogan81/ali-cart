@@ -28,7 +28,7 @@ pnpm start
 
 Open http://localhost:3000, paste the sheet link, type the tab name, pick priorities, press **Run**.
 
-The first real run opens a Chrome window and asks you to sign in to AliExpress. Your login lives in the `profile/` folder (gitignored) and is reused afterwards. Make sure your AliExpress account has your delivery address set; the ship-to country in `.env` must match it.
+The first real run opens a **plain** Chrome window on the app's own profile and asks you to sign in to AliExpress; sign in, then close that window and the run continues. Sign-in has to happen outside automation because AliExpress's slider check refuses to pass in an automated browser. Your login lives in the `profile/` folder (gitignored) and is reused afterwards. Make sure your AliExpress account has your delivery address set; the ship-to country in `.env` must match it.
 
 ### Settings (`.env`)
 

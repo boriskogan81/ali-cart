@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
-import { gotoWithChecks, launchBrowser, getPage, pause, waitForLogin } from "./browser.js";
+import { checkLoggedIn, gotoWithChecks, launchBrowser, getPage, manualLogin, pause } from "./browser.js";
 import { CART_URL, addToCart } from "./cart.js";
 import { config } from "./config.js";
 import { isAliExpressLink, resolveLink } from "./links.js";
@@ -105,11 +105,7 @@ export class Run extends EventEmitter {
     this.ctx = await launchBrowser();
     this.page = await getPage(this.ctx);
     if (dryRun) this.log("Dry run: not waiting for AliExpress login (search, matching and pricing work signed out).");
-    else
-      await waitForLogin(this.page, async () => {
-        this.setPhase("login", "Sign in to AliExpress in the browser window. The run continues once you are signed in.");
-        notify("ali-cart needs you", "Sign in to AliExpress in the browser window.");
-      });
+    else await this.ensureLoggedIn();
     this.setPhase("running", `${dryRun ? "Browser ready" : "Signed in"}. Processing ${this.state.rows.filter((r) => r.status === "pending").length} rows${dryRun ? " (dry run, nothing is added to the cart)" : ""}.`);
 
     let processed = 0;
@@ -134,6 +130,20 @@ export class Run extends EventEmitter {
       notify("ali-cart: dry run finished", `${ok} matched, ${problems} need attention. Nothing was added to the cart.`);
     }
     this.log(`Finished. ${ok} ok, ${problems} need attention, landed total ${config.currency} ${this.state.totalLanded.toFixed(2)}.`);
+  }
+
+  /** Sign-in happens in a plain (non-automated) Chrome on the same profile, because AliExpress's slider blocks automated browsers. */
+  private async ensureLoggedIn() {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (await checkLoggedIn(this.page!)) return;
+      this.setPhase("login", "A separate Chrome window is opening. Sign in to AliExpress there, then CLOSE that window; the run continues by itself.");
+      notify("ali-cart needs you", "Sign in to AliExpress in the Chrome window that just opened, then close it.");
+      await this.ctx!.close();
+      await manualLogin();
+      this.ctx = await launchBrowser();
+      this.page = await getPage(this.ctx);
+    }
+    throw new Error("Still not signed in to AliExpress after three attempts.");
   }
 
   private async processRow(i: number) {

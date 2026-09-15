@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { config } from "./config.js";
 
@@ -20,7 +22,7 @@ export async function launchBrowser(): Promise<BrowserContext> {
         channel: channel === "chromium" ? undefined : channel,
         viewport: { width: 1280, height: 900 },
         locale: "en-US",
-        ignoreDefaultArgs: ["--enable-automation"],
+        ignoreDefaultArgs: ["--enable-automation", "--no-sandbox"],
       });
       // tsx/esbuild wraps inner functions of page.evaluate callbacks in a `__name` helper that does not exist
       // inside the page; define a no-op so those callbacks run.
@@ -70,18 +72,45 @@ export async function gotoWithChecks(page: Page, url: string, onBlocked: (kind: 
   }
 }
 
-export async function waitForLogin(page: Page, onWaiting: () => Promise<void>, pollMs = 3000): Promise<void> {
+export async function checkLoggedIn(page: Page): Promise<boolean> {
   await page.goto("https://www.aliexpress.com/", { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForTimeout(2000);
-  if (await isLoggedIn(page)) return;
-  await onWaiting();
-  // Take the user straight to the login screen; they finish it by hand in the visible window.
-  await page.goto("https://login.aliexpress.com/", { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
-  for (;;) {
-    await page.waitForTimeout(pollMs);
-    if (/login\.aliexpress/i.test(page.url())) continue;
-    if (await isLoggedIn(page)) return;
-  }
+  await page.waitForTimeout(2500);
+  return isLoggedIn(page);
+}
+
+const CHROME_PATHS: Record<Exclude<BrowserChannel, "chromium">, string[]> = {
+  chrome: [
+    `${process.env["ProgramFiles"] ?? "C:\\Program Files"}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)"}\\Google\\Chrome\\Application\\chrome.exe`,
+    `${process.env["LOCALAPPDATA"] ?? ""}\\Google\\Chrome\\Application\\chrome.exe`,
+  ],
+  msedge: [
+    `${process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)"}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    `${process.env["ProgramFiles"] ?? "C:\\Program Files"}\\Microsoft\\Edge\\Application\\msedge.exe`,
+  ],
+};
+
+export function findPlainBrowser(): string | null {
+  const order: ("chrome" | "msedge")[] = process.env.BROWSER_CHANNEL === "msedge" ? ["msedge", "chrome"] : ["chrome", "msedge"];
+  for (const ch of order) for (const p of CHROME_PATHS[ch]) if (existsSync(p)) return p;
+  return null;
+}
+
+/**
+ * AliExpress's login slider refuses to pass inside an automated browser. So for the sign-in itself we open the
+ * SAME profile folder in plain, non-automated Chrome, let the user log in by hand, and wait for that window to
+ * close. The cookies then carry over to the automated session. The Playwright context must be closed first,
+ * because Chrome will not open a profile that is already in use.
+ */
+export async function manualLogin(): Promise<void> {
+  const exe = findPlainBrowser();
+  if (!exe) throw new Error("Could not find Google Chrome or Microsoft Edge to open the sign-in window.");
+  const child = spawn(
+    exe,
+    [`--user-data-dir=${config.profileDir}`, "--no-first-run", "--no-default-browser-check", "--new-window", "https://login.aliexpress.com/"],
+    { detached: false, stdio: "ignore" },
+  );
+  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
 /** Human-ish pause between AliExpress requests. */
