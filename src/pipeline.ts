@@ -57,7 +57,11 @@ export class Run extends EventEmitter {
 
   private goto = async (url: string) => {
     if (!this.page) throw new Error("browser not started");
-    await gotoWithChecks(this.page, url, async () => {
+    await gotoWithChecks(this.page, url, async (kind, waitMs) => {
+      if (kind === "rate-limit") {
+        this.setPhase("captcha", `AliExpress is rate-limiting this network. Backing off for ${Math.round(waitMs / 60_000)} min before retrying; nothing to do on your side.`);
+        return;
+      }
       if (this.state.phase !== "captcha") this.setPhase("captcha", "AliExpress is showing a bot check. Solve it in the browser window; the run resumes automatically.");
       if (!this.captchaNotified) {
         this.captchaNotified = true;
@@ -216,7 +220,7 @@ export class Run extends EventEmitter {
           });
         }
         this.updateRow(i, { priced: [...priced] });
-        await pause(600, 1500);
+        await pause(1500, 3500);
       }
       const eligible = priced.filter((p) => !p.rejected).sort((a, b) => a.landedTotal - b.landedTotal);
       const chosen = eligible[0] ?? null;
@@ -244,7 +248,7 @@ export class Run extends EventEmitter {
       await this.goto(searchUrl(query, { sort }));
       const html = await this.page!.content();
       lists.push(parseSearchHtml(html));
-      await pause(500, 1200);
+      await pause(1500, 3000);
     }
     return mergeCandidates(...lists);
   }

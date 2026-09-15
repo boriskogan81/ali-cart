@@ -39,9 +39,10 @@ The first real run opens a **plain** Chrome window on the app's own profile and 
 | `CURRENCY` | `USD` | Display currency for prices |
 | `MIN_STORE_POSITIVE_RATE` | `90` | Listings from stores below this feedback % are rejected |
 | `MIN_STORE_ORDERS` | `20` | Stores with fewer sales are rejected (ten times this many followers also counts as established) |
-| `MAX_PRICED_PER_ROW` | `8` | How many matched listings to open per row (cheapest first) |
+| `MAX_PRICED_PER_ROW` | `6` | How many matched listings to open per row (cheapest first) |
 | `MAX_PRICE_MULTIPLE` | `3` | Reject listings whose landed cost exceeds this multiple of the sheet estimate |
 | `BROWSER_CHANNEL` | | Force `chrome`, `msedge` or `chromium` |
+| `PACE` | `1` | Multiplier on the pauses between AliExpress requests; raise it if you get "unusual traffic" blocks |
 | `PORT` | `3000` | Local server port |
 
 ### Command line
@@ -64,7 +65,7 @@ The parsers are tested against saved AliExpress HTML in `test/fixtures`. When Al
 
 ## Caveats
 
-- This scrapes AliExpress. It will break when they change their pages, and heavy use can trigger bot checks. The app paces itself and stops for captchas.
+- This scrapes AliExpress. It will break when they change their pages, and heavy use can trigger bot checks. The app paces itself, stops for captchas, and backs off (2, 5, 10, 15 minutes) when AliExpress reports "unusual traffic from your network". Several full runs within an hour will trigger that block.
 - "Same product" is a judgement call made from listing titles. Review the chosen listings in the results table before you pay; the alternatives are listed under each row.
 - Shipping is read once per listing and assumed not to scale with quantity, which is how AliExpress usually prices small parts. Check the cart total.
 - Prices shown by AliExpress can differ between signed-out and signed-in sessions, and between search cards and item pages. The item page price is the one used.

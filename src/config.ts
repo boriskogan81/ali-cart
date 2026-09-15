@@ -19,7 +19,7 @@ export const config = {
   /** How many search result pages to pull per query (relevance sort + price sort each). */
   searchPages: 1,
   /** Cap on listings opened in the browser per row for pricing. */
-  maxPricedPerRow: num("MAX_PRICED_PER_ROW", 8),
+  maxPricedPerRow: num("MAX_PRICED_PER_ROW", 6),
   /** Reject a listing whose landed cost exceeds this multiple of the sheet's estimated price (when the sheet has one). */
   maxPriceMultiple: num("MAX_PRICE_MULTIPLE", 3),
   model: "claude-opus-5",

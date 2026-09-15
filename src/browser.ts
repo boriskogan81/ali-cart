@@ -63,12 +63,33 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
     .catch(() => false);
 }
 
-export async function gotoWithChecks(page: Page, url: string, onBlocked: (kind: "captcha") => Promise<void>): Promise<void> {
+/** "We have detected unusual traffic from your network" - a temporary rate limit, not a puzzle the user can solve. */
+export async function isRateLimited(page: Page): Promise<boolean> {
+  return page.evaluate(() => /unusual traffic from your network/i.test(document.body?.innerText ?? "")).catch(() => false);
+}
+
+const BACKOFF_MS = [120_000, 300_000, 600_000, 900_000];
+
+export async function gotoWithChecks(page: Page, url: string, onBlocked: (kind: "captcha" | "rate-limit", waitMs: number) => Promise<void>): Promise<void> {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await page.waitForTimeout(800);
-  while (await isCaptcha(page)) {
-    await onBlocked("captcha");
-    await page.waitForTimeout(3000);
+  let backoff = 0;
+  for (;;) {
+    if (await isRateLimited(page)) {
+      if (backoff >= BACKOFF_MS.length) throw new Error("AliExpress is rate-limiting this network; try again in an hour");
+      const wait = BACKOFF_MS[backoff++];
+      await onBlocked("rate-limit", wait);
+      await page.waitForTimeout(wait);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      continue;
+    }
+    if (await isCaptcha(page)) {
+      await onBlocked("captcha", 3000);
+      await page.waitForTimeout(3000);
+      continue;
+    }
+    return;
   }
 }
 
@@ -118,7 +139,8 @@ export async function manualLogin(): Promise<void> {
   await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
-/** Human-ish pause between AliExpress requests. */
-export function pause(min = 1200, max = 3200): Promise<void> {
-  return new Promise((r) => setTimeout(r, min + Math.random() * (max - min)));
+/** Human-ish pause between AliExpress requests, scaled by PACE (default 1; 2 = twice as slow). */
+export function pause(min = 2500, max = 6000): Promise<void> {
+  const scale = Number(process.env.PACE) || 1;
+  return new Promise((r) => setTimeout(r, scale * (min + Math.random() * (max - min))));
 }
