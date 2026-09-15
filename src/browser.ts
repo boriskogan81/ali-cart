@@ -46,7 +46,8 @@ export async function getPage(ctx: BrowserContext): Promise<Page> {
 /** True when the page is an AliExpress bot-check / slider captcha / "punish" page. */
 export async function isCaptcha(page: Page): Promise<boolean> {
   const url = page.url();
-  if (/punish|_____tmd_____|captcha/i.test(url)) return true;
+  if (/_____tmd_____|captcha/i.test(url)) return true;
+  if (page.frames().some((f) => /nocaptcha|_____tmd_____|captcha/i.test(f.url()))) return true;
   return page
     .evaluate(() => !!document.querySelector("#nc_1_n1z, .nc-container, #baxia-dialog-content, .baxia-dialog, [id^='baxia']"))
     .catch(() => false);
@@ -65,10 +66,14 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
 
 /** "We have detected unusual traffic from your network" - a temporary rate limit, not a puzzle the user can solve. */
 export async function isRateLimited(page: Page): Promise<boolean> {
-  return page.evaluate(() => /unusual traffic from your network/i.test(document.body?.innerText ?? "")).catch(() => false);
+  // The notice is rendered inside a "punish" iframe injected into the page, so check frame URLs as well as text.
+  if (page.frames().some((f) => /\/punish\//i.test(f.url()))) return true;
+  return page
+    .evaluate(() => !!document.querySelector('iframe[src*="punish"], .J_MIDDLEWARE_FRAME_WIDGET') || /unusual traffic from your network/i.test(document.body?.innerText ?? ""))
+    .catch(() => false);
 }
 
-const BACKOFF_MS = [120_000, 300_000, 600_000, 900_000];
+const BACKOFF_MS = [300_000, 600_000, 1_200_000, 1_800_000];
 
 export async function gotoWithChecks(page: Page, url: string, onBlocked: (kind: "captcha" | "rate-limit", waitMs: number) => Promise<void>): Promise<void> {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
