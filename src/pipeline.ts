@@ -277,7 +277,13 @@ export class Run extends EventEmitter {
       await addToCart(this.page!, chosen, row.qty, this.goto);
       this.updateRow(i, { status: "ok", cartAdded: true, message: `added ${row.qty} x ${chosen.productId} to cart` });
     } catch (err) {
-      this.updateRow(i, { status: "error", message: (err as Error).message.split("\n")[0] });
+      const message = (err as Error).message.split("\n")[0];
+      this.updateRow(i, { status: "error", message });
+      // A rate limit that outlasted the whole back-off ladder will hit every following row too; stop and keep our place.
+      if (/rate-limiting/i.test(message)) {
+        this.updateRow(i, { status: "pending", message: "not processed: AliExpress rate limit; rerun later with --rows" });
+        throw new Error(`${message}. Unprocessed rows: ${this.state.rows.filter((r) => r.status === "pending").map((r) => r.row.rowNumber).join(",")}`);
+      }
     }
   }
 
