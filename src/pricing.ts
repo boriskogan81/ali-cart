@@ -160,9 +160,9 @@ export async function priceListing(
     unitPrice: unit,
     shipping: snap.shipping,
     shippingNote: snap.shippingNote,
-    landedPerUnit: unit + ship,
+    landedPerUnit: Math.round((unit + ship) * 100) / 100,
     // Shipping is charged once per listing; AliExpress usually does not scale it with quantity for small parts.
-    landedTotal: unit * qty + ship,
+    landedTotal: Math.round((unit * qty + ship) * 100) / 100,
     storeName: snap.storeName,
     storePositiveRate: snap.storePositiveRate,
     storeOrders: snap.soldCount ?? candidate.sold,

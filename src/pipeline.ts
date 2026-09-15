@@ -239,12 +239,15 @@ export class Run extends EventEmitter {
 
   private async seedFromItem(itemId: string): Promise<Candidate | null> {
     await this.goto(`https://www.aliexpress.com/item/${itemId}.html`);
+    await this.page!.waitForSelector('h1[data-pl="product-title"], [class*="price-default--current"]', { timeout: 20_000 }).catch(() => {});
     const info = await this.page!.evaluate(() => ({
-      title: (document.querySelector("h1") as HTMLElement | null)?.innerText.trim() ?? document.title,
+      title:
+        (document.querySelector('h1[data-pl="product-title"]') as HTMLElement | null)?.innerText.trim() ||
+        document.title.replace(/\s*-\s*AliExpress.*$/i, "").trim(),
       price: (document.querySelector('[class*="price-default--current"]') as HTMLElement | null)?.innerText ?? "",
     }));
     const price = Number(info.price.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/)?.[1] ?? NaN);
-    if (!info.title) return null;
+    if (!info.title || /^aliexpress$/i.test(info.title)) return null;
     return { productId: itemId, title: info.title, price: Number.isFinite(price) ? price : 0, currency: config.currency, rating: null, sold: null, isAd: false, imageUrl: "", url: `https://www.aliexpress.com/item/${itemId}.html` };
   }
 
