@@ -211,6 +211,7 @@ export class Run extends EventEmitter {
             storePositiveRate: null,
             storeOrders: candidate.sold,
             storeFollowers: null,
+            optionGroups: [],
             rejected: `page error: ${(err as Error).message.split("\n")[0]}`,
           });
         }

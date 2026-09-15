@@ -24,7 +24,7 @@ describe("pricing parsers", () => {
   });
   it("scores variant labels", () => {
     expect(variantScore("1900KV", "1900KV")).toBe(100);
-    expect(variantScore("2207 1900KV 4PCS", "1900KV")).toBe(60);
+    expect(variantScore("2207 1900KV 4PCS", "1900KV")).toBe(100);
     expect(variantScore("2400KV", "1900KV")).toBe(0);
     expect(variantScore("RHCP SMA Black", "SMA RHCP")).toBeGreaterThan(0);
   });
@@ -49,5 +49,15 @@ describe("store-level stats", () => {
     expect(parseStoreSold("1 sold")).toBeNull();
     expect(parseFollowers("SkyNova Drone Parts Store\n0.0% Positive Feedback | 8 Followers")).toBe(8);
     expect(parseFollowers("93.6% Positive Feedback | 2,308 Followers")).toBe(2308);
+  });
+});
+
+describe("variantScore with units and counts", () => {
+  it("matches numeric cores across unit spellings and count aliases", () => {
+    expect(variantScore("2X 6S 1300 130C XT60", "6S 1300mAh, 2pcs")).toBe(100);
+    expect(variantScore("2X 2S 1300 130C XT60", "6S 1300mAh, 2pcs")).toBeLessThan(60);
+    expect(variantScore("2X 6S 1100 130C XT60", "6S 1300mAh, 2pcs")).toBeLessThan(100);
+    expect(variantScore("1PCS 1900KV", "1900KV")).toBe(100);
+    expect(variantScore("Metal 65A", "65A")).toBe(100);
   });
 });

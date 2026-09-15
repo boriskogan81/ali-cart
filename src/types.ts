@@ -54,6 +54,8 @@ export interface Priced {
   storePositiveRate: number | null;
   storeOrders: number | null;
   storeFollowers: number | null;
+  /** Option pickers seen on the page (title: choices), for auditing variant selection. */
+  optionGroups: string[];
   rejected: string | null;
 }
 

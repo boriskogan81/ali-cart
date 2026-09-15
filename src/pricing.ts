@@ -103,18 +103,42 @@ export async function snapshotItemPage(page: Page): Promise<PageSnapshot> {
   };
 }
 
-/** Score how well an option label matches the variant hint. Higher is better; 0 means no overlap. */
+const COUNT_ALIASES = new Set(["pcs", "pc", "pieces", "piece", "x", "pack", "set", "sets"]);
+
+/** Split "1300mAh" into its numeric core and unit so "1300" on the page can match "1300mAh" in the hint. */
+function tokenParts(t: string): { num: string | null; unit: string } {
+  const m = t.match(/^(\d+(?:\.\d+)?)([a-z]*)$/);
+  return m ? { num: m[1], unit: m[2] } : { num: null, unit: t };
+}
+
+function tokensMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const pa = tokenParts(a);
+  const pb = tokenParts(b);
+  if (pa.num === null || pb.num === null || pa.num !== pb.num) return false;
+  if (!pa.unit || !pb.unit) return true; // "1300" vs "1300mah"
+  if (pa.unit === pb.unit) return true;
+  return COUNT_ALIASES.has(pa.unit) && COUNT_ALIASES.has(pb.unit); // "2pcs" vs "2x"
+}
+
+/** Score how well an option label matches the variant hint. 100 = every hint token found; 0 = no overlap. */
 export function variantScore(label: string, hint: string): number {
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9.]+/g, " ").trim();
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/(\d)\s*(?=(mah|kv|s|a|v|w|mm|cm|awg|pcs|pc|x)\b)/g, "$1") // "1300 mAh" -> "1300mah"
+      .replace(/[^a-z0-9.]+/g, " ")
+      .trim();
   const l = norm(label);
   const h = norm(hint);
   if (!l || !h) return 0;
   if (l === h) return 100;
-  if (l.includes(h) || h.includes(l)) return 60;
-  const lt = new Set(l.split(" "));
+  const lt = l.split(" ");
   const ht = h.split(" ");
-  const hits = ht.filter((t) => lt.has(t)).length;
-  return hits === 0 ? 0 : (40 * hits) / ht.length;
+  const hits = ht.filter((t) => lt.some((x) => tokensMatch(x, t))).length;
+  if (hits === ht.length) return 100;
+  if (l.includes(h) || h.includes(l)) return 60;
+  return hits === 0 ? 0 : (60 * hits) / ht.length;
 }
 
 /** Click the SKU options that best match the variant hint (one per option group when there is a decent match). */
@@ -204,6 +228,7 @@ export async function priceListing(
     storePositiveRate: snap.storePositiveRate,
     storeOrders: snap.storeSold ?? snap.soldCount ?? candidate.sold,
     storeFollowers: snap.storeFollowers,
+    optionGroups: snap.skuGroups.filter((g) => g.options.length > 1).map((g) => `${g.title}: ${g.options.map((o) => o.label).join(" | ")}`),
     rejected,
   };
 }
