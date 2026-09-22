@@ -53,6 +53,8 @@ pnpm cli --sheet "https://docs.google.com/spreadsheets/d/…/edit" --tab '5"' --
 
 Flags: `--priorities Essential,Recommended`, `--limit 3` (first N rows), `--rows 12,17` (only those sheet rows), `--keep-open` (leave the browser up).
 
+`pnpm tsx scripts/quote.mjs "query|must,have,keywords"` prints the cheapest search results for a query over plain HTTP, no browser needed; handy for a quick price survey of alternatives.
+
 A dry run does everything except add to cart and does not need an AliExpress login. Set `ALI_CART_MATCHER=keyword` to replace Claude with a crude title-keyword matcher when you have no API key; expect worse matches.
 
 ## Tests
@@ -69,3 +71,4 @@ The parsers are tested against saved AliExpress HTML in `test/fixtures`. When Al
 - "Same product" is a judgement call made from listing titles. Review the chosen listings in the results table before you pay; the alternatives are listed under each row.
 - Shipping is read once per listing and assumed not to scale with quantity, which is how AliExpress usually prices small parts. Check the cart total.
 - Prices shown by AliExpress can differ between signed-out and signed-in sessions, and between search cards and item pages. The item page price is the one used.
+- AliExpress checkout only takes 20 cart lines at a time. Ticking a 21st line silently drops an earlier one on the server while the page still shows it checked, so for larger carts check out in batches of 20 and reload the cart to confirm the selection before paying.
